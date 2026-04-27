@@ -101,7 +101,6 @@ export function createLabeledNode(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  const textPad = texSize * 0.1;
   const maxTextW = radius * 1.5;
   const maxLines = 4;
   const startFont = Math.min(32, Math.max(14, Math.floor(texSize * 0.07)));
