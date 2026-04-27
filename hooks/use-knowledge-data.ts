@@ -7,7 +7,7 @@ import type { Category, GraphData, KnowledgeEdge, KnowledgeNode, NodeWithCategor
 
 type Status = "idle" | "loading" | "ready" | "error";
 
-export function useKnowledgeData() {
+export function useKnowledgeData(kbId: string) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [nodes, setNodes] = useState<NodeWithCategory[]>([]);
@@ -20,14 +20,21 @@ export function useKnowledgeData() {
       setStatus("error");
       return { nodes: [] as NodeWithCategory[] };
     }
+    if (!kbId) {
+      setNodes([]);
+      setEdges([]);
+      setCategories([]);
+      setStatus("idle");
+      return { nodes: [] as NodeWithCategory[] };
+    }
     setStatus("loading");
     setError(null);
     try {
       const supabase = getSupabaseBrowser();
       const [cRes, nRes, eRes] = await Promise.all([
-        supabase.from("categories").select("*").order("name"),
-        supabase.from("nodes").select("*").order("created_at", { ascending: false }),
-        supabase.from("edges").select("*"),
+        supabase.from("categories").select("*").eq("knowledge_base_id", kbId).order("name"),
+        supabase.from("nodes").select("*").eq("knowledge_base_id", kbId).order("created_at", { ascending: false }),
+        supabase.from("edges").select("*").eq("knowledge_base_id", kbId),
       ]);
       if (cRes.error) throw cRes.error;
       if (nRes.error) throw nRes.error;
@@ -49,7 +56,7 @@ export function useKnowledgeData() {
       setStatus("error");
       return { nodes: [] as NodeWithCategory[] };
     }
-  }, []);
+  }, [kbId]);
 
   useEffect(() => {
     void refetch();

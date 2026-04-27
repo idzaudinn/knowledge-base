@@ -26,6 +26,7 @@ const rowEdge = z.object({
 });
 
 const schema = z.object({
+  knowledge_base_id: z.string().uuid(),
   categories: z.array(rowCat).optional(),
   nodes: z.array(rowNode).optional(),
   edges: z.array(rowEdge).optional(),
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid import structure" }, { status: 400 });
   }
   const data = p.data;
+  const knowledgeBaseId = data.knowledge_base_id;
   if (!data.nodes?.length) {
     return NextResponse.json({ error: "No nodes in import" }, { status: 400 });
   }
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest) {
         const { data: found } = await supabase
           .from("categories")
           .select("id")
+          .eq("knowledge_base_id", knowledgeBaseId)
           .ilike("name", c.name)
           .limit(1)
           .maybeSingle();
@@ -74,7 +77,11 @@ export async function POST(req: NextRequest) {
         }
         const { data: ins, error } = await supabase
           .from("categories")
-          .insert({ name: c.name, color: c.color || nextCategoryColor() })
+          .insert({
+            knowledge_base_id: knowledgeBaseId,
+            name: c.name,
+            color: c.color || nextCategoryColor(),
+          })
           .select("id")
           .single();
         if (error) throw error;
@@ -90,6 +97,7 @@ export async function POST(req: NextRequest) {
           const { data: cRow } = await supabase
             .from("categories")
             .select("id")
+            .eq("knowledge_base_id", knowledgeBaseId)
             .eq("id", n.category_id)
             .maybeSingle();
           if (cRow?.id) cid = cRow.id;
@@ -98,6 +106,7 @@ export async function POST(req: NextRequest) {
       const { data: ins, error } = await supabase
         .from("nodes")
         .insert({
+          knowledge_base_id: knowledgeBaseId,
           label: n.label,
           content: n.content,
           category_id: cid,
@@ -114,6 +123,7 @@ export async function POST(req: NextRequest) {
       const b = oldNodeIdToNew.get(e.target_id);
       if (!a || !b || a === b) continue;
       const { error: eErr } = await supabase.from("edges").insert({
+        knowledge_base_id: knowledgeBaseId,
         source_id: a,
         target_id: b,
         relationship: e.relationship,

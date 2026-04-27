@@ -1,17 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
 
 function dateStamp() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const kbId = req.nextUrl.searchParams.get("kbId");
+    if (!kbId || !/^[0-9a-f-]{36}$/i.test(kbId)) {
+      return NextResponse.json({ error: "Invalid kbId" }, { status: 400 });
+    }
     const supabase = getSupabaseService();
     const [ca, n, e] = await Promise.all([
-      supabase.from("categories").select("*").order("name"),
-      supabase.from("nodes").select("*").order("created_at"),
-      supabase.from("edges").select("*"),
+      supabase.from("categories").select("*").eq("knowledge_base_id", kbId).order("name"),
+      supabase.from("nodes").select("*").eq("knowledge_base_id", kbId).order("created_at"),
+      supabase.from("edges").select("*").eq("knowledge_base_id", kbId),
     ]);
     if (ca.error) throw ca.error;
     if (n.error) throw n.error;

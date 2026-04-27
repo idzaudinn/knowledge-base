@@ -15,6 +15,15 @@ import { useKnowledgeData } from "@/hooks/use-knowledge-data";
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import type { GraphNode, NodeWithCategory } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -27,8 +36,18 @@ function normalize(s: string) {
   return s.trim().toLowerCase();
 }
 
+type KnowledgeBaseTab = { id: string; name: string };
+
+const KB_ACTIVE_KEY = "kb.active.v1";
+
+function validKbName(value: string) {
+  return value.trim().length >= 2 && value.trim().length <= 40;
+}
+
 export default function Home() {
-  const { status, error, nodes, edges, categories, graphData, refetch } = useKnowledgeData();
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseTab[]>([]);
+  const [activeKbId, setActiveKbId] = useState("");
+  const { status, error, nodes, edges, categories, graphData, refetch } = useKnowledgeData(activeKbId);
   const [mode, setMode] = useState<"feed" | "ask">("feed");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,6 +62,9 @@ export default function Home() {
   const [ctx, setCtx] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isNarrow, setNarrow] = useState(false);
+  const [createKbOpen, setCreateKbOpen] = useState(false);
+  const [newKbName, setNewKbName] = useState("");
+  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   useEffect(() => {
     const q = () => setNarrow(typeof window !== "undefined" && window.innerWidth < 900);
@@ -51,16 +73,65 @@ export default function Home() {
     return () => window.removeEventListener("resize", q);
   }, []);
 
+  useEffect(() => {
+    const loadKnowledgeBases = async () => {
+      try {
+        const res = await fetch("/api/knowledge-bases");
+        const j = (await res.json().catch(() => ({}))) as {
+          knowledgeBases?: Array<{ id: string; name: string }>;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(j.error || "Could not load knowledge bases");
+        const rows = (j.knowledgeBases ?? []).filter(
+          (row) => typeof row.id === "string" && typeof row.name === "string" && row.name.trim().length > 0
+        );
+        setKnowledgeBases(rows.map((row) => ({ id: row.id, name: row.name.trim() })));
+        if (!rows.length) {
+          setActiveKbId("");
+          return;
+        }
+        const savedActive = typeof window !== "undefined" ? window.localStorage.getItem(KB_ACTIVE_KEY) : null;
+        const resolved = rows.find((x) => x.id === savedActive)?.id ?? rows[0].id;
+        setActiveKbId(resolved);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not load knowledge bases");
+      }
+    };
+    void loadKnowledgeBases();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!activeKbId) return;
+    window.localStorage.setItem(KB_ACTIVE_KEY, activeKbId);
+  }, [activeKbId]);
+
+  useEffect(() => {
+    setSelected(null);
+    setPanelOpen(false);
+    setCtx(null);
+    setSearch("");
+    setHl(new Set());
+    setNewIds(new Set());
+  }, [activeKbId]);
+
   const loadChat = useCallback(async () => {
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured() || !activeKbId) {
+      setMessages([]);
+      return;
+    }
     const supabase = getSupabaseBrowser();
     const { data, error: err } = await supabase
       .from("chat_history")
       .select("id, role, content, message_type, created_at")
+      .eq("knowledge_base_id", activeKbId)
       .order("created_at", { ascending: true })
       .limit(200);
     if (err) return;
-    if (!data?.length) return;
+    if (!data?.length) {
+      setMessages([]);
+      return;
+    }
     setMessages(
       data.map(
         (r) =>
@@ -72,7 +143,7 @@ export default function Home() {
           }) satisfies UiMessage
       )
     );
-  }, []);
+  }, [activeKbId]);
 
   useEffect(() => {
     void loadChat();
@@ -92,7 +163,7 @@ export default function Home() {
 
   const send = useCallback(async () => {
     const t = input.trim();
-    if (!t || busy) return;
+    if (!t || busy || !activeKbId) return;
     setBusy(true);
     setInput("");
     setMessages((m) => [
@@ -108,7 +179,7 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: t, mode }),
+        body: JSON.stringify({ message: t, mode, kbId: activeKbId }),
       });
       const j = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -172,7 +243,7 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
     } finally {
       setBusy(false);
     }
-  }, [input, busy, mode, refetch, loadChat]);
+  }, [input, busy, mode, refetch, loadChat, activeKbId]);
 
   const resolveNode = useCallback(
     (g: GraphNode) => {
@@ -201,6 +272,61 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
     });
   };
 
+  const createKnowledgeBase = async () => {
+    const cleanName = newKbName.trim();
+    if (!validKbName(cleanName)) {
+      toast.error("Knowledge base name must be 2 to 40 characters.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/knowledge-bases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: cleanName }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        knowledgeBase?: { id: string; name: string };
+      };
+      if (!res.ok || !j.knowledgeBase) throw new Error(j.error || "Could not create knowledge base");
+      setKnowledgeBases((prev) => [...prev, { id: j.knowledgeBase!.id, name: j.knowledgeBase!.name }]);
+      setActiveKbId(j.knowledgeBase.id);
+      setNewKbName("");
+      setCreateKbOpen(false);
+      toast.success(`Switched to "${j.knowledgeBase.name}"`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create knowledge base");
+    }
+  };
+
+  const clearAllKnowledge = useCallback(async () => {
+    if (!isSupabaseConfigured() || !activeKbId) {
+      toast.error("Supabase is not configured");
+      return;
+    }
+    if (!nodes.length) {
+      toast("This knowledge base is already empty.");
+      setClearAllOpen(false);
+      return;
+    }
+    try {
+      const supabase = getSupabaseBrowser();
+      const { error: delErr } = await supabase.from("nodes").delete().eq("knowledge_base_id", activeKbId);
+      if (delErr) throw delErr;
+      const ids = nodes.map((n) => n.id);
+      toast.success(`Deleted ${ids.length} node${ids.length > 1 ? "s" : ""}`);
+      setSelected(null);
+      setPanelOpen(false);
+      setCtx(null);
+      setHl(new Set());
+      setNewIds(new Set());
+      setClearAllOpen(false);
+      void refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not clear this knowledge base");
+    }
+  }, [activeKbId, nodes, refetch]);
+
   const leftPanel = (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2 pl-0">
       <GraphControls
@@ -209,6 +335,12 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
         categories={categories}
         hiddenCategoryIds={hiddenCat}
         onToggleCategory={onToggleCategory}
+        knowledgeBases={knowledgeBases}
+        activeKnowledgeBaseId={activeKbId}
+        onSwitchKnowledgeBase={setActiveKbId}
+        onCreateKnowledgeBase={() => setCreateKbOpen(true)}
+        onClearAll={() => setClearAllOpen(true)}
+        clearAllDisabled={nodes.length === 0}
         className="z-20"
       />
       <div className="min-h-0 flex-1">
@@ -233,6 +365,19 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
           newNodeIds={newIds}
           hiddenCategoryIds={hiddenCat}
           searchMatchIds={searchMatchIds}
+          activeNodeId={selected?.id ?? null}
+          onDeleteNode={async (node) => {
+            const res = await fetch(`/api/nodes/${node.id}?kbId=${encodeURIComponent(activeKbId)}`, { method: "DELETE" });
+            if (res.ok) {
+              toast.success("Node deleted");
+              setPanelOpen(false);
+              setSelected(null);
+              setCtx(null);
+              void refetch();
+            } else {
+              toast.error("Could not delete");
+            }
+          }}
           loading={busy}
         />
       </div>
@@ -269,7 +414,7 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#0c101b] text-slate-100">
-      <Header onImportResult={() => void refetch()} />
+      <Header activeKnowledgeBaseId={activeKbId} onImportResult={() => void refetch()} />
       <Separator className="bg-slate-800/50" />
       <div className="min-h-0 flex-1">
         {!isNarrow ? (
@@ -330,7 +475,7 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
           if (!ctx) return;
           const id = ctx.node.id;
           setCtx(null);
-          const res = await fetch(`/api/nodes/${id}`, { method: "DELETE" });
+          const res = await fetch(`/api/nodes/${id}?kbId=${encodeURIComponent(activeKbId)}`, { method: "DELETE" });
           if (res.ok) {
             toast.success("Node deleted");
             void refetch();
@@ -353,6 +498,54 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
           setSelected(null);
         }}
       />
+      <Dialog open={createKbOpen} onOpenChange={setCreateKbOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create knowledge base</DialogTitle>
+            <DialogDescription>
+              This creates a new tab and keeps its nodes separated from your other knowledge.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-xs text-slate-400" htmlFor="new-kb-name">
+              Name
+            </label>
+            <Input
+              id="new-kb-name"
+              value={newKbName}
+              onChange={(e) => setNewKbName(e.target.value)}
+              placeholder="e.g. Product Research"
+              maxLength={40}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setCreateKbOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void createKnowledgeBase()}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clear all knowledge?</DialogTitle>
+            <DialogDescription>
+              This will remove every node and edge in the current knowledge base tab.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setClearAllOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void clearAllKnowledge()}>
+              Clear all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Sheet open={isNarrow && mobileOpen} onOpenChange={setMobileOpen} modal>
         <SheetContent side="bottom" className="h-[80vh] border-slate-800">
           <SheetHeader>

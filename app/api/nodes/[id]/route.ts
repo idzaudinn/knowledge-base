@@ -13,8 +13,12 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, context: Params) {
   const { id } = await context.params;
+  const kbId = req.nextUrl.searchParams.get("kbId");
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+  }
+  if (kbId && !/^[0-9a-f-]{36}$/i.test(kbId)) {
+    return NextResponse.json({ error: "Invalid kbId" }, { status: 400 });
   }
   try {
     const json: unknown = await req.json();
@@ -23,15 +27,14 @@ export async function PUT(req: NextRequest, context: Params) {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 });
     }
     const supabase = getSupabaseService();
-    const { data, error } = await supabase
+    const query = supabase
       .from("nodes")
       .update({
         ...parsed.data,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
-      .select()
-      .single();
+      .eq("id", id);
+    const { data, error } = await (kbId ? query.eq("knowledge_base_id", kbId) : query).select().single();
     if (error) throw error;
     return NextResponse.json({ node: data });
   } catch (e) {
@@ -42,14 +45,19 @@ export async function PUT(req: NextRequest, context: Params) {
   }
 }
 
-export async function DELETE(_req: NextRequest, context: Params) {
+export async function DELETE(req: NextRequest, context: Params) {
   const { id } = await context.params;
+  const kbId = req.nextUrl.searchParams.get("kbId");
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
+  if (kbId && !/^[0-9a-f-]{36}$/i.test(kbId)) {
+    return NextResponse.json({ error: "Invalid kbId" }, { status: 400 });
+  }
   try {
     const supabase = getSupabaseService();
-    const { error } = await supabase.from("nodes").delete().eq("id", id);
+    const query = supabase.from("nodes").delete().eq("id", id);
+    const { error } = kbId ? await query.eq("knowledge_base_id", kbId) : await query;
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {

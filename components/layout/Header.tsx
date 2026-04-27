@@ -8,10 +8,11 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   className?: string;
+  activeKnowledgeBaseId: string;
   onImportResult?: (summary: string) => void;
 };
 
-export function Header({ className, onImportResult }: Props) {
+export function Header({ className, activeKnowledgeBaseId, onImportResult }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <header
@@ -34,10 +35,14 @@ export function Header({ className, onImportResult }: Props) {
             try {
               const text = await f.text();
               const json = JSON.parse(text) as unknown;
+              const payload =
+                json && typeof json === "object" && !Array.isArray(json)
+                  ? (json as Record<string, unknown>)
+                  : {};
               const res = await fetch("/api/import", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(json),
+                body: JSON.stringify({ ...payload, knowledge_base_id: activeKnowledgeBaseId }),
               });
               const j = (await res.json().catch(() => ({}))) as {
                 ok?: boolean;
@@ -59,6 +64,7 @@ export function Header({ className, onImportResult }: Props) {
           variant="secondary"
           size="sm"
           className="gap-1.5"
+          disabled={!activeKnowledgeBaseId}
           onClick={() => fileRef.current?.click()}
         >
           <Upload className="h-4 w-4" />
@@ -69,8 +75,9 @@ export function Header({ className, onImportResult }: Props) {
           variant="secondary"
           size="sm"
           className="gap-1.5"
+          disabled={!activeKnowledgeBaseId}
           onClick={async () => {
-            const res = await fetch("/api/export/json");
+            const res = await fetch(`/api/export/json?kbId=${encodeURIComponent(activeKnowledgeBaseId)}`);
             if (!res.ok) {
               toast.error("Export failed");
               return;
@@ -92,8 +99,9 @@ export function Header({ className, onImportResult }: Props) {
           variant="secondary"
           size="sm"
           className="gap-1.5"
+          disabled={!activeKnowledgeBaseId}
           onClick={async () => {
-            const res = await fetch("/api/export/md");
+            const res = await fetch(`/api/export/md?kbId=${encodeURIComponent(activeKnowledgeBaseId)}`);
             if (!res.ok) {
               toast.error("Export failed");
               return;

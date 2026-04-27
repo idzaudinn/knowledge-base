@@ -4,6 +4,7 @@ import { z } from "zod";
 import { nextCategoryColor } from "@/lib/graph-helpers";
 
 const postSchema = z.object({
+  knowledge_base_id: z.string().uuid(),
   name: z.string().min(1).max(200),
   color: z
     .string()
@@ -11,12 +12,17 @@ const postSchema = z.object({
     .optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const kbId = req.nextUrl.searchParams.get("kbId");
+    if (!kbId || !/^[0-9a-f-]{36}$/i.test(kbId)) {
+      return NextResponse.json({ error: "Invalid kbId" }, { status: 400 });
+    }
     const supabase = getSupabaseService();
     const { data: categories, error } = await supabase
       .from("categories")
       .select("*")
+      .eq("knowledge_base_id", kbId)
       .order("name");
     if (error) throw error;
     return NextResponse.json({ categories });
@@ -39,6 +45,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("categories")
       .insert({
+        knowledge_base_id: parsed.data.knowledge_base_id,
         name: parsed.data.name,
         color: parsed.data.color ?? nextCategoryColor(),
       })

@@ -10,6 +10,7 @@ import { z } from "zod";
 const bodySchema = z.object({
   message: z.string().min(1).max(32000),
   mode: z.enum(["feed", "ask"]),
+  kbId: z.string().uuid(),
 });
 
 type NodeWithCat = KnowledgeNode & { category: Category | null };
@@ -18,15 +19,22 @@ function normalizeLabel(s: string): string {
   return s.trim().toLowerCase();
 }
 
-async function loadGraph(supabase: ReturnType<typeof getSupabaseService>) {
+async function loadGraph(supabase: ReturnType<typeof getSupabaseService>, kbId: string) {
   const { data: categories, error: cErr } = await supabase
     .from("categories")
     .select("*")
+    .eq("knowledge_base_id", kbId)
     .order("name");
   if (cErr) throw cErr;
-  const { data: nodeRows, error: nErr } = await supabase.from("nodes").select("*");
+  const { data: nodeRows, error: nErr } = await supabase
+    .from("nodes")
+    .select("*")
+    .eq("knowledge_base_id", kbId);
   if (nErr) throw nErr;
-  const { data: edgeRows, error: eErr } = await supabase.from("edges").select("*");
+  const { data: edgeRows, error: eErr } = await supabase
+    .from("edges")
+    .select("*")
+    .eq("knowledge_base_id", kbId);
   if (eErr) throw eErr;
   const catById = new Map((categories as Category[]).map((c) => [c.id, c] as const));
   const nodes: NodeWithCat[] = (nodeRows as KnowledgeNode[]).map((n) => ({
@@ -97,13 +105,13 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  const { message, mode } = parsed.data;
+  const { message, mode, kbId } = parsed.data;
   const supabase = getSupabaseService();
   const anthropic = getAnthropic();
 
   try {
     if (mode === "feed") {
-      const { categories, nodes } = await loadGraph(supabase);
+      const { categories, nodes } = await loadGraph(supabase, kbId);
       const nodeLabels = nodes.map((n) => ({
         label: n.label,
         category: n.category?.name ?? null,
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
           const color = nextCategoryColor();
           const { data: ins, error } = await supabase
             .from("categories")
-            .insert({ name, color })
+            .insert({ name, color, knowledge_base_id: kbId })
             .select()
             .single();
           if (error) throw error;
@@ -170,6 +178,7 @@ export async function POST(req: NextRequest) {
           const { data: nIns, error: nErr } = await supabase
             .from("nodes")
             .insert({
+              knowledge_base_id: kbId,
               label: item.label.slice(0, 500),
               content: item.content,
               category_id: cat.id,
@@ -183,7 +192,10 @@ export async function POST(req: NextRequest) {
           created.push(item.label);
         }
       }
-      const { data: reloaded } = await supabase.from("nodes").select("*");
+      const { data: reloaded } = await supabase
+        .from("nodes")
+        .select("*")
+        .eq("knowledge_base_id", kbId);
       const reNodes = (reloaded as KnowledgeNode[]) ?? [];
       for (const n of reNodes) {
         labelToId.set(normalizeLabel(n.label), n.id);
@@ -193,6 +205,7 @@ export async function POST(req: NextRequest) {
         const b = labelToId.get(normalizeLabel(e.target));
         if (!a || !b || a === b) continue;
         const { error: eErr } = await supabase.from("edges").insert({
+          knowledge_base_id: kbId,
           source_id: a,
           target_id: b,
           relationship: e.relationship.slice(0, 500),
@@ -204,8 +217,9 @@ export async function POST(req: NextRequest) {
         }
       }
       await supabase.from("chat_history").insert([
-        { role: "user", content: message, message_type: "feed" },
+        { knowledge_base_id: kbId, role: "user", content: message, message_type: "feed" },
         {
+          knowledge_base_id: kbId,
           role: "assistant",
           content: `✅ ${data.summary}
 
@@ -224,7 +238,7 @@ Linked/updated: ${linked.length ? linked.join(", ") : "(none)"}`,
         message: "feed_complete",
       });
     }
-    const { nodes, edges } = await loadGraph(supabase);
+    const { nodes, edges } = await loadGraph(supabase, kbId);
     const byId = new Map(nodes.map((n) => [n.id, n] as const));
     let selected = nodes;
     const combined = formatKnowledgeForPrompt(nodes);
@@ -276,8 +290,8 @@ ${kb}
       if (m) referencedIds.push(m.id);
     }
     await supabase.from("chat_history").insert([
-      { role: "user", content: message, message_type: "question" },
-      { role: "assistant", content: out, message_type: "question" },
+      { knowledge_base_id: kbId, role: "user", content: message, message_type: "question" },
+      { knowledge_base_id: kbId, role: "assistant", content: out, message_type: "question" },
     ]);
     return NextResponse.json({
       ok: true,

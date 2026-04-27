@@ -1,12 +1,20 @@
 export interface Category {
   id: string;
+  knowledge_base_id: string;
   name: string;
   color: string;
   created_at: string;
 }
 
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface KnowledgeNode {
   id: string;
+  knowledge_base_id: string;
   label: string;
   content: string;
   category_id: string | null;
@@ -17,6 +25,7 @@ export interface KnowledgeNode {
 
 export interface KnowledgeEdge {
   id: string;
+  knowledge_base_id: string;
   source_id: string;
   target_id: string;
   relationship: string;
@@ -26,6 +35,7 @@ export interface KnowledgeEdge {
 
 export interface ChatMessageRow {
   id: string;
+  knowledge_base_id: string;
   role: "user" | "assistant";
   content: string;
   message_type: MessageType;

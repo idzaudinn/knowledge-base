@@ -91,7 +91,10 @@ export function NodeDetailPanel({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/nodes/${node.id}`, {
+      const url = node.knowledge_base_id
+        ? `/api/nodes/${node.id}?kbId=${encodeURIComponent(node.knowledge_base_id)}`
+        : `/api/nodes/${node.id}`;
+      const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -118,7 +121,10 @@ export function NodeDetailPanel({
     if (!isSupabaseConfigured()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/nodes/${node.id}`, { method: "DELETE" });
+      const url = node.knowledge_base_id
+        ? `/api/nodes/${node.id}?kbId=${encodeURIComponent(node.knowledge_base_id)}`
+        : `/api/nodes/${node.id}`;
+      const res = await fetch(url, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       toast.success("Node removed");
       onDeleted();
@@ -148,7 +154,7 @@ export function NodeDetailPanel({
               <Textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                className="mt-1 min-h-[140px]"
+                className="mt-1 min-h-[140px] font-mono"
               />
             </div>
             <div>
@@ -173,7 +179,7 @@ export function NodeDetailPanel({
             <p className="text-xs text-slate-500">Created: {fmtDate(node.created_at)}</p>
             <div>
               <p className="text-xs text-slate-400">Connected</p>
-              <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto text-sm text-slate-300">
+              <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto font-mono text-sm text-slate-300">
                 {neighbors.length === 0 && <li className="text-slate-500">No edges yet</li>}
                 {neighbors.map((n) => (
                   <li key={n.id + n.dir}>
