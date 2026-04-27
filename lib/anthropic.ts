@@ -1,10 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const DEFAULT_MODEL_CANDIDATES = [
-  "claude-haiku-4-5-latest",
   "claude-sonnet-4-20250514",
   "claude-3-5-sonnet-20241022",
-  "claude-3-5-sonnet-latest",
 ] as const;
 
 let _client: Anthropic | null = null;
