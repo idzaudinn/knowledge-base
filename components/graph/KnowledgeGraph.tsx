@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
+import { useCallback, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import type { ForceGraphMethods } from "react-force-graph-3d";
 import type { GraphData, GraphLink, GraphNode } from "@/lib/types";
 import { createLabeledNode } from "./graph-node-three";
@@ -69,7 +69,8 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
 ) {
   const [dim, setDim] = useState({ w: 800, h: 500 });
   const fgRef = useRef<ForceGraphMethods | null>(null);
-  const [tick, setTick] = useState(0);
+  /** Hovered node + 1-hop; state (not a ref) so link accessors stay in sync, without thrashing like the old 100ms tick. */
+  const [hoverHalo, setHoverHalo] = useState<{ id: string; nbr: Set<string> } | null>(null);
   const filtered = useMemo(() => {
     const show = (n: GraphNode) => {
       if (!n.categoryId) return true;
@@ -83,8 +84,6 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     return { nodes, links };
   }, [data, hiddenCategoryIds]);
 
-  const hover = useRef<{ n: string | null; nbr: Set<string> }>({ n: null, nbr: new Set() });
-
   const focusNbr = useMemo(
     () => (focusNodeId ? neighborIds(focusNodeId, filtered.links) : new Set<string>()),
     [focusNodeId, filtered.links]
@@ -94,11 +93,6 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     return filtered.nodes.find((n) => n.id === focusNodeId)?.label ?? null;
   }, [focusNodeId, filtered.nodes]);
 
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 100);
-    return () => clearInterval(t);
-  }, []);
-
   const nodeColor = useCallback(
     (n: object) => {
       const node = n as GraphNode;
@@ -106,8 +100,8 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         return "#1e293b";
       }
       if (highlightIds.has(node.id)) return "#fbbf24";
-      if (hover.current.n) {
-        if (node.id === hover.current.n) return "#f8fafc";
+      if (hoverHalo) {
+        if (node.id === hoverHalo.id) return "#f8fafc";
         return node.color;
       }
       if (focusNodeId) {
@@ -116,7 +110,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       }
       return node.color;
     },
-    [highlightIds, searchMatchIds, focusNodeId]
+    [highlightIds, searchMatchIds, focusNodeId, hoverHalo]
   );
 
   const nodeVal = useCallback(
@@ -127,19 +121,35 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         const t = (Date.now() % 1500) / 1500;
         return base * (0.5 + 0.5 * Math.min(1, t * 2.5));
       }
-      return base + 0.08 * Math.sin(tick * 0.12 + (node.id.charCodeAt(0) % 7));
+      return base;
     },
-    [newNodeIds, tick]
+    [newNodeIds]
   );
 
   const onNodeHover = useCallback(
     (n: object | null) => {
       if (!n) {
-        hover.current = { n: null, nbr: new Set() };
+        setHoverHalo((prev) => (prev == null ? prev : null));
         return;
       }
       const node = n as GraphNode;
-      hover.current = { n: node.id, nbr: neighborIds(node.id, filtered.links) };
+      const id = node.id;
+      const nbr = neighborIds(id, filtered.links);
+      setHoverHalo((prev) => {
+        if (prev && prev.id === id) {
+          if (prev.nbr.size === nbr.size) {
+            let same = true;
+            for (const x of nbr) {
+              if (!prev.nbr.has(x)) {
+                same = false;
+                break;
+              }
+            }
+            if (same) return prev;
+          }
+        }
+        return { id, nbr };
+      });
     },
     [filtered.links]
   );
@@ -152,8 +162,8 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       const link = l as GraphLink;
       const s = String(link.source);
       const t = String(link.target);
-      if (hover.current.n) {
-        if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
+      if (hoverHalo) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, hoverHalo.id, hoverHalo.nbr)) {
           return "rgba(56,189,248,1)";
         }
         return "rgba(51,65,85,0.12)";
@@ -166,7 +176,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       }
       return "rgba(148,163,184,0.45)";
     },
-    [searchMatchIds, focusNodeId, focusNbr]
+    [searchMatchIds, focusNodeId, focusNbr, hoverHalo]
   );
 
   const linkWidth = useCallback(
@@ -178,8 +188,8 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       if (searchMatchIds.size > 0) {
         return base;
       }
-      if (hover.current.n) {
-        if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
+      if (hoverHalo) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, hoverHalo.id, hoverHalo.nbr)) {
           return base + 0.9;
         }
         return Math.max(0.2, base * 0.3);
@@ -192,7 +202,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       }
       return base;
     },
-    [searchMatchIds, focusNodeId, focusNbr]
+    [searchMatchIds, focusNodeId, focusNbr, hoverHalo]
   );
 
   useImperativeHandle(

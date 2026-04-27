@@ -74,7 +74,8 @@ export function createLabeledNode(
   options: { meshColor: string; size: number }
 ): THREE.Object3D {
   const { meshColor, size } = options;
-  const scaleW = 6 * Math.max(0.4, Math.min(2.4, size * 0.5));
+  const s = Number.isFinite(size) && size > 0 ? size : 1;
+  const scaleW = 6 * Math.max(0.4, Math.min(2.4, s * 0.5));
 
   const label = (n.label || "—").trim() || "—";
   const canvas = document.createElement("canvas");
@@ -124,13 +125,14 @@ export function createLabeledNode(
   map.generateMipmaps = false;
   const mat = new THREE.SpriteMaterial({
     map,
-    depthTest: true,
+    // Avoid link tubes / scene depth making billboard nodes effectively invisible
+    depthTest: false,
     depthWrite: false,
     sizeAttenuation: true,
     transparent: true,
   });
   const sprite = new THREE.Sprite(mat);
-  sprite.renderOrder = 0;
+  sprite.renderOrder = 10;
   sprite.scale.set(scaleW, scaleW, 1);
   return sprite;
 }
