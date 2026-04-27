@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import type { ForceGraphMethods } from "react-force-graph-3d";
 import type { GraphData, GraphLink, GraphNode } from "@/lib/types";
-import { Button } from "@/components/ui/button";
+import { createLabeledNode } from "./graph-node-three";
 
 const ForceGraph3D = dynamic(
   () => import("./ForceGraph3DClient").then((m) => m.ForceGraph3DClient),
@@ -20,13 +20,12 @@ type Props = {
   data: GraphData;
   onNodeClick?: (node: GraphNode) => void;
   onNodeRightClick?: (node: GraphNode, ev: MouseEvent) => void;
-  onDeleteNode?: (node: GraphNode) => void;
+  onBackgroundClick?: () => void;
   onBackgroundDblClick?: () => void;
   highlightIds: Set<string>;
   newNodeIds: Set<string>;
   hiddenCategoryIds: Set<string>;
   searchMatchIds: Set<string>;
-  activeNodeId?: string | null;
   loading?: boolean;
 };
 
@@ -35,13 +34,12 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     data,
     onNodeClick,
     onNodeRightClick,
-    onDeleteNode,
+    onBackgroundClick,
     onBackgroundDblClick,
     highlightIds,
     newNodeIds,
     hiddenCategoryIds,
     searchMatchIds,
-    activeNodeId,
     loading,
   },
   ref
@@ -49,8 +47,6 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
   const [dim, setDim] = useState({ w: 800, h: 500 });
   const fgRef = useRef<ForceGraphMethods | null>(null);
   const [tick, setTick] = useState(0);
-  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-
   const filtered = useMemo(() => {
     const show = (n: GraphNode) => {
       if (!n.categoryId) return true;
@@ -105,11 +101,9 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     (n: object | null) => {
       if (!n) {
         hover.current = { n: null, nbr: new Set() };
-        setHoveredNode(null);
         return;
       }
       const node = n as GraphNode;
-      setHoveredNode(node);
       const nbr = new Set<string>();
       for (const l of filtered.links) {
         const s = String(l.source);
@@ -136,11 +130,16 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     []
   );
 
-  const activeNode = useMemo(() => {
-    if (!activeNodeId) return null;
-    return filtered.nodes.find((n) => n.id === activeNodeId) ?? null;
-  }, [activeNodeId, filtered.nodes]);
-  const detailNode = hoveredNode ?? activeNode;
+  const nodeThreeObject = useCallback(
+    (o: object) => {
+      const n = o as GraphNode;
+      return createLabeledNode(n, {
+        meshColor: nodeColor(n),
+        size: nodeVal(n),
+      });
+    },
+    [nodeColor, nodeVal]
+  );
 
   return (
     <div
@@ -175,14 +174,13 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         linkLabel={(l) => (l as GraphLink).label}
         nodeColor={nodeColor}
         nodeVal={nodeVal}
+        nodeThreeObject={nodeThreeObject}
         onNodeClick={(n) => onNodeClick?.(n as GraphNode)}
         onNodeRightClick={
           onNodeRightClick ? (n, e) => onNodeRightClick(n as GraphNode, e) : undefined
         }
         onNodeHover={(n) => onNodeHover(n)}
-        onBackgroundClick={() => {
-          // single click: no-op; dbl on container
-        }}
+        onBackgroundClick={() => onBackgroundClick?.()}
         linkColor={() => "rgba(148,163,184,0.45)"}
         linkWidth={(l) => 0.35 + 0.9 * (l as GraphLink).strength}
         linkDirectionalParticles={0}
@@ -199,26 +197,6 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         <div>Drag: rotate · Scroll: zoom</div>
         <div>Drag node: move · Double-click: reset view</div>
       </div>
-      {activeNode && onDeleteNode && (
-        <div className="absolute right-2 top-2 z-20">
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="h-7 text-xs"
-            onClick={() => onDeleteNode(activeNode)}
-          >
-            Delete selected
-          </Button>
-        </div>
-      )}
-      {detailNode && (
-        <div className="pointer-events-none absolute bottom-2 left-2 z-10 max-w-[380px] rounded border border-slate-700/60 bg-slate-900/85 px-3 py-2 text-xs text-slate-300 backdrop-blur-sm">
-          <p className="font-mono text-sky-300">{detailNode.label}</p>
-          <p className="mt-1 font-mono text-slate-400">{detailNode.id}</p>
-          <p className="mt-2 line-clamp-4 whitespace-pre-wrap font-mono text-slate-200">{detailNode.content}</p>
-        </div>
-      )}
     </div>
   );
 });

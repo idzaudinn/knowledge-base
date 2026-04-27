@@ -5,6 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { KnowledgeGraph, type KnowledgeGraphRef } from "@/components/graph/KnowledgeGraph";
 import { NodeDetailPanel } from "@/components/graph/NodeDetailPanel";
+import { NodePreviewCard } from "@/components/graph/NodePreviewCard";
 import { GraphControls } from "@/components/graph/GraphControls";
 import { NodeContextMenu } from "@/components/graph/NodeContextMenu";
 import { ChatPanel, type UiMessage } from "@/components/chat/ChatPanel";
@@ -327,6 +328,20 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
     }
   }, [activeKbId, nodes, refetch]);
 
+  const deleteSelectedNode = useCallback(async () => {
+    if (!selected) return;
+    const res = await fetch(`/api/nodes/${selected.id}?kbId=${encodeURIComponent(activeKbId)}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Node deleted");
+      setPanelOpen(false);
+      setSelected(null);
+      setCtx(null);
+      void refetch();
+    } else {
+      toast.error("Could not delete");
+    }
+  }, [activeKbId, refetch, selected]);
+
   const leftPanel = (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2 pl-0">
       <GraphControls
@@ -343,43 +358,55 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
         clearAllDisabled={nodes.length === 0}
         className="z-20"
       />
-      <div className="min-h-0 flex-1">
-        <KnowledgeGraph
-          ref={graphRef}
-          data={graphData}
-          onNodeClick={(n) => {
-            const w = resolveNode(n);
-            if (w) {
-              setSelected(w);
-              setPanelOpen(true);
-            }
-            setCtx(null);
-          }}
-          onNodeRightClick={(n, ev) => {
-            ev.preventDefault();
-            setCtx({ node: n, x: (ev as MouseEvent).clientX, y: (ev as MouseEvent).clientY });
-            setPanelOpen(false);
-          }}
-          onBackgroundDblClick={() => graphRef.current?.resetCamera()}
-          highlightIds={hl}
-          newNodeIds={newIds}
-          hiddenCategoryIds={hiddenCat}
-          searchMatchIds={searchMatchIds}
-          activeNodeId={selected?.id ?? null}
-          onDeleteNode={async (node) => {
-            const res = await fetch(`/api/nodes/${node.id}?kbId=${encodeURIComponent(activeKbId)}`, { method: "DELETE" });
-            if (res.ok) {
-              toast.success("Node deleted");
-              setPanelOpen(false);
+      <div
+        className={
+          isNarrow
+            ? "flex min-h-0 w-full min-w-0 flex-1 flex-col gap-2"
+            : "flex min-h-0 w-full min-w-0 flex-1 flex-row gap-2"
+        }
+      >
+        {selected && (
+          <NodePreviewCard
+            node={selected}
+            compact={isNarrow}
+            onClose={() => {
               setSelected(null);
+              setPanelOpen(false);
+            }}
+            onEdit={() => setPanelOpen(true)}
+            onDelete={() => void deleteSelectedNode()}
+            className={isNarrow ? "max-h-[38vh] shrink-0" : "self-stretch"}
+          />
+        )}
+        <div className="min-h-0 min-w-0 flex-1">
+          <KnowledgeGraph
+            ref={graphRef}
+            data={graphData}
+            onNodeClick={(n) => {
+              const w = resolveNode(n);
+              if (w) {
+                setSelected(w);
+                setPanelOpen(false);
+              }
               setCtx(null);
-              void refetch();
-            } else {
-              toast.error("Could not delete");
-            }
-          }}
-          loading={busy}
-        />
+            }}
+            onNodeRightClick={(n, ev) => {
+              ev.preventDefault();
+              setCtx({ node: n, x: (ev as MouseEvent).clientX, y: (ev as MouseEvent).clientY });
+              setPanelOpen(false);
+            }}
+            onBackgroundClick={() => {
+              setSelected(null);
+              setPanelOpen(false);
+            }}
+            onBackgroundDblClick={() => graphRef.current?.resetCamera()}
+            highlightIds={hl}
+            newNodeIds={newIds}
+            hiddenCategoryIds={hiddenCat}
+            searchMatchIds={searchMatchIds}
+            loading={busy}
+          />
+        </div>
       </div>
     </div>
   );
