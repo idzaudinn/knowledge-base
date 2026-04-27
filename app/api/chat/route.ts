@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAnthropic, CLAUDE_MODEL } from "@/lib/anthropic";
+import { getAnthropic, createMessageWithFallback } from "@/lib/anthropic";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { parseFeedJsonFromText } from "@/lib/parse-claude-json";
 import { selectRelevantNodes, formatKnowledgeForPrompt, formatRelationshipsForAsk, nextCategoryColor } from "@/lib/graph-helpers";
@@ -109,8 +109,7 @@ export async function POST(req: NextRequest) {
         category: n.category?.name ?? null,
       }));
       const system = buildFeedPrompt(categories, nodeLabels);
-      const res = await anthropic.messages.create({
-        model: CLAUDE_MODEL,
+      const { response: res, model: usedModel } = await createMessageWithFallback(anthropic, {
         max_tokens: 8192,
         system,
         messages: [{ role: "user", content: message }],
@@ -221,6 +220,7 @@ Linked/updated: ${linked.length ? linked.join(", ") : "(none)"}`,
         summary: data.summary,
         created,
         linked,
+        model: usedModel,
         message: "feed_complete",
       });
     }
@@ -249,8 +249,7 @@ At the end of your answer, add a new line: REFERENCES: followed by a pipe-separa
 KNOWLEDGE BASE:
 ${kb}
 `;
-    const res = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
+    const { response: res, model: usedModel } = await createMessageWithFallback(anthropic, {
       max_tokens: 4096,
       system,
       messages: [{ role: "user", content: message }],
@@ -285,6 +284,7 @@ ${kb}
       mode: "ask",
       answer: out,
       referencedNodeIds: referencedIds,
+      model: usedModel,
     });
   } catch (e) {
     console.error(e);

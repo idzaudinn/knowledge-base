@@ -1,10 +1,10 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseEnv, isValidSupabaseUrl } from "@/lib/supabase-env";
 
 function requireEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error("Supabase is not configured");
+  const { url, key } = getSupabaseEnv();
+  if (!key || !isValidSupabaseUrl(url)) {
+    throw new Error("Supabase is not configured (check NEXT_PUBLIC_SUPABASE_URL and ANON key)");
   }
   return { url, key };
 }
