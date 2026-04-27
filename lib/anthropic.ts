@@ -1,8 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const DEFAULT_MODEL_CANDIDATES = [
+  "claude-haiku-4-5",
+  "claude-haiku-4-5-latest",
   "claude-sonnet-4-20250514",
   "claude-3-5-sonnet-20241022",
+  "claude-3-5-haiku-20241022",
+  "claude-3-haiku-20240307",
 ] as const;
 
 let _client: Anthropic | null = null;
@@ -58,6 +62,13 @@ export async function createMessageWithFallback(
       lastErr = err;
       if (!isModelNotFoundError(err)) throw err;
     }
+  }
+  if (isModelNotFoundError(lastErr)) {
+    throw new Error(
+      `No available Anthropic model was found for this API key. Tried: ${candidates.join(
+        ", "
+      )}. Set ANTHROPIC_MODEL in your environment to a model ID your account can access.`
+    );
   }
   throw lastErr ?? new Error("No available Anthropic model was found");
 }
