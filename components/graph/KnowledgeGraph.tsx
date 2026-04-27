@@ -89,6 +89,10 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     () => (focusNodeId ? neighborIds(focusNodeId, filtered.links) : new Set<string>()),
     [focusNodeId, filtered.links]
   );
+  const focusNodeLabel = useMemo(() => {
+    if (!focusNodeId) return null;
+    return filtered.nodes.find((n) => n.id === focusNodeId)?.label ?? null;
+  }, [focusNodeId, filtered.nodes]);
 
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 100);
@@ -103,18 +107,16 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       }
       if (highlightIds.has(node.id)) return "#fbbf24";
       if (hover.current.n) {
-        if (node.id === hover.current.n) return "#e2e8f0";
-        if (hover.current.nbr.has(node.id)) return node.color;
-        return "#334155";
+        if (node.id === hover.current.n) return "#f8fafc";
+        return node.color;
       }
       if (focusNodeId) {
-        if (node.id === focusNodeId) return "#e2e8f0";
-        if (focusNbr.has(node.id)) return node.color;
-        return "#334155";
+        if (node.id === focusNodeId) return "#f8fafc";
+        return node.color;
       }
       return node.color;
     },
-    [highlightIds, searchMatchIds, focusNodeId, focusNbr]
+    [highlightIds, searchMatchIds, focusNodeId]
   );
 
   const nodeVal = useCallback(
@@ -152,15 +154,15 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       const t = String(link.target);
       if (hover.current.n) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
-          return "rgba(125,211,252,0.95)";
+          return "rgba(56,189,248,1)";
         }
-        return "rgba(51,65,85,0.2)";
+        return "rgba(51,65,85,0.12)";
       }
       if (focusNodeId) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
-          return "rgba(125,211,252,0.95)";
+          return "rgba(56,189,248,1)";
         }
-        return "rgba(51,65,85,0.2)";
+        return "rgba(51,65,85,0.12)";
       }
       return "rgba(148,163,184,0.45)";
     },
@@ -178,15 +180,15 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
       }
       if (hover.current.n) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
-          return base + 0.45;
+          return base + 0.9;
         }
-        return base * 0.4;
+        return Math.max(0.2, base * 0.3);
       }
       if (focusNodeId) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
-          return base + 0.45;
+          return base + 0.9;
         }
-        return base * 0.4;
+        return Math.max(0.2, base * 0.3);
       }
       return base;
     },
@@ -274,6 +276,11 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         <div>Drag: rotate · Scroll: zoom</div>
         <div>Drag node: move · Double-click: reset view</div>
       </div>
+      {focusNodeLabel && (
+        <div className="pointer-events-none absolute left-2 top-[52px] max-w-[260px] rounded border border-sky-400/35 bg-slate-950/85 px-2 py-1 text-xs text-slate-200">
+          Selected: <span className="text-sky-300">{focusNodeLabel}</span>
+        </div>
+      )}
     </div>
   );
 });
