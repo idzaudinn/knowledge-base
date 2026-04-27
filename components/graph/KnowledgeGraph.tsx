@@ -164,8 +164,9 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
 
   const linkColor = useCallback(
     (l: object) => {
+      // Default + search: lighter slate so thin lines read on dark bg
       if (searchMatchIds.size > 0) {
-        return "rgba(148,163,184,0.45)";
+        return "rgba(186, 201, 222, 0.78)";
       }
       const link = l as GraphLink;
       const s = linkEndpointId((link as { source: unknown }).source);
@@ -174,15 +175,16 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         if (isEdgeBetweenCenterAndNeighbor(s, t, hoverHalo.id, hoverHalo.nbr)) {
           return "rgb(34, 211, 238)";
         }
-        return "rgba(51,65,85,0.35)";
+        // Non-highlight: still visible, not near-black
+        return "rgba(148, 163, 184, 0.62)";
       }
       if (focusNodeId) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
           return "rgb(34, 211, 238)";
         }
-        return "rgba(51,65,85,0.35)";
+        return "rgba(148, 163, 184, 0.62)";
       }
-      return "rgba(148,163,184,0.45)";
+      return "rgba(186, 201, 222, 0.78)";
     },
     [searchMatchIds, focusNodeId, focusNbr, hoverHalo]
   );
@@ -200,13 +202,13 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         if (isEdgeBetweenCenterAndNeighbor(s, t, hoverHalo.id, hoverHalo.nbr)) {
           return base + 0.9;
         }
-        return Math.max(0.2, base * 0.3);
+        return Math.max(0.5, base * 0.55);
       }
       if (focusNodeId) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
           return base + 0.9;
         }
-        return Math.max(0.2, base * 0.3);
+        return Math.max(0.5, base * 0.55);
       }
       return base;
     },
@@ -281,7 +283,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         linkColor={linkColor}
         linkWidth={linkWidth}
         linkDirectionalParticles={0}
-        linkOpacity={0.75}
+        linkOpacity={0.9}
         backgroundColor="rgba(11, 15, 26, 0.95)"
         showNavInfo={false}
         cooldownTicks={120}
