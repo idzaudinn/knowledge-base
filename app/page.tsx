@@ -404,6 +404,7 @@ Created: ${(j.created ?? []).join(", ") || "—"}.`
             newNodeIds={newIds}
             hiddenCategoryIds={hiddenCat}
             searchMatchIds={searchMatchIds}
+            focusNodeId={selected?.id ?? null}
             loading={busy}
           />
         </div>

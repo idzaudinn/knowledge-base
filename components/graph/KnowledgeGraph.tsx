@@ -11,6 +11,26 @@ const ForceGraph3D = dynamic(
   { ssr: false }
 );
 
+function neighborIds(nodeId: string, links: GraphLink[]): Set<string> {
+  const nbr = new Set<string>();
+  for (const l of links) {
+    const s = String(l.source);
+    const t = String(l.target);
+    if (s === nodeId) nbr.add(t);
+    if (t === nodeId) nbr.add(s);
+  }
+  return nbr;
+}
+
+function isEdgeBetweenCenterAndNeighbor(
+  sourceId: string,
+  targetId: string,
+  centerId: string,
+  nbr: Set<string>
+): boolean {
+  return (sourceId === centerId && nbr.has(targetId)) || (targetId === centerId && nbr.has(sourceId));
+}
+
 export type KnowledgeGraphRef = {
   zoomToNode: (id: string) => void;
   resetCamera: () => void;
@@ -26,6 +46,8 @@ type Props = {
   newNodeIds: Set<string>;
   hiddenCategoryIds: Set<string>;
   searchMatchIds: Set<string>;
+  /** When set, node + 1-hop neighbors stay vivid (same as hover) until cleared. */
+  focusNodeId?: string | null;
   loading?: boolean;
 };
 
@@ -40,6 +62,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     newNodeIds,
     hiddenCategoryIds,
     searchMatchIds,
+    focusNodeId = null,
     loading,
   },
   ref
@@ -62,6 +85,11 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
 
   const hover = useRef<{ n: string | null; nbr: Set<string> }>({ n: null, nbr: new Set() });
 
+  const focusNbr = useMemo(
+    () => (focusNodeId ? neighborIds(focusNodeId, filtered.links) : new Set<string>()),
+    [focusNodeId, filtered.links]
+  );
+
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 100);
     return () => clearInterval(t);
@@ -79,9 +107,14 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         if (hover.current.nbr.has(node.id)) return node.color;
         return "#334155";
       }
+      if (focusNodeId) {
+        if (node.id === focusNodeId) return "#e2e8f0";
+        if (focusNbr.has(node.id)) return node.color;
+        return "#334155";
+      }
       return node.color;
     },
-    [highlightIds, searchMatchIds]
+    [highlightIds, searchMatchIds, focusNodeId, focusNbr]
   );
 
   const nodeVal = useCallback(
@@ -104,16 +137,60 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         return;
       }
       const node = n as GraphNode;
-      const nbr = new Set<string>();
-      for (const l of filtered.links) {
-        const s = String(l.source);
-        const t = String(l.target);
-        if (s === node.id) nbr.add(t);
-        if (t === node.id) nbr.add(s);
-      }
-      hover.current = { n: node.id, nbr };
+      hover.current = { n: node.id, nbr: neighborIds(node.id, filtered.links) };
     },
     [filtered.links]
+  );
+
+  const linkColor = useCallback(
+    (l: object) => {
+      if (searchMatchIds.size > 0) {
+        return "rgba(148,163,184,0.45)";
+      }
+      const link = l as GraphLink;
+      const s = String(link.source);
+      const t = String(link.target);
+      if (hover.current.n) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
+          return "rgba(125,211,252,0.95)";
+        }
+        return "rgba(51,65,85,0.2)";
+      }
+      if (focusNodeId) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
+          return "rgba(125,211,252,0.95)";
+        }
+        return "rgba(51,65,85,0.2)";
+      }
+      return "rgba(148,163,184,0.45)";
+    },
+    [searchMatchIds, focusNodeId, focusNbr]
+  );
+
+  const linkWidth = useCallback(
+    (l: object) => {
+      const link = l as GraphLink;
+      const base = 0.35 + 0.9 * (link.strength || 0);
+      const s = String(link.source);
+      const t = String(link.target);
+      if (searchMatchIds.size > 0) {
+        return base;
+      }
+      if (hover.current.n) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, hover.current.n, hover.current.nbr)) {
+          return base + 0.45;
+        }
+        return base * 0.4;
+      }
+      if (focusNodeId) {
+        if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
+          return base + 0.45;
+        }
+        return base * 0.4;
+      }
+      return base;
+    },
+    [searchMatchIds, focusNodeId, focusNbr]
   );
 
   useImperativeHandle(
@@ -181,10 +258,10 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         }
         onNodeHover={(n) => onNodeHover(n)}
         onBackgroundClick={() => onBackgroundClick?.()}
-        linkColor={() => "rgba(148,163,184,0.45)"}
-        linkWidth={(l) => 0.35 + 0.9 * (l as GraphLink).strength}
+        linkColor={linkColor}
+        linkWidth={linkWidth}
         linkDirectionalParticles={0}
-        linkOpacity={0.5}
+        linkOpacity={0.75}
         backgroundColor="rgba(11, 15, 26, 0.95)"
         showNavInfo={false}
         cooldownTicks={120}
