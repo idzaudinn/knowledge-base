@@ -11,11 +11,19 @@ const ForceGraph3D = dynamic(
   { ssr: false }
 );
 
+/** After the force simulation runs, link.source/target are often node object refs, not id strings. */
+function linkEndpointId(u: unknown): string {
+  if (u == null) return "";
+  if (typeof u === "string" || typeof u === "number") return String(u);
+  if (typeof u === "object" && "id" in u) return String((u as { id: string }).id);
+  return String(u);
+}
+
 function neighborIds(nodeId: string, links: GraphLink[]): Set<string> {
   const nbr = new Set<string>();
   for (const l of links) {
-    const s = String(l.source);
-    const t = String(l.target);
+    const s = linkEndpointId(l.source);
+    const t = linkEndpointId(l.target);
     if (s === nodeId) nbr.add(t);
     if (t === nodeId) nbr.add(s);
   }
@@ -79,7 +87,7 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     const nodes = data.nodes.filter(show);
     const idSet = new Set(nodes.map((n) => n.id));
     const links = data.links.filter(
-      (l) => idSet.has(String(l.source)) && idSet.has(String(l.target))
+      (l) => idSet.has(linkEndpointId(l.source)) && idSet.has(linkEndpointId(l.target))
     );
     return { nodes, links };
   }, [data, hiddenCategoryIds]);
@@ -160,19 +168,19 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
         return "rgba(148,163,184,0.45)";
       }
       const link = l as GraphLink;
-      const s = String(link.source);
-      const t = String(link.target);
+      const s = linkEndpointId((link as { source: unknown }).source);
+      const t = linkEndpointId((link as { target: unknown }).target);
       if (hoverHalo) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, hoverHalo.id, hoverHalo.nbr)) {
-          return "rgba(56,189,248,1)";
+          return "rgb(34, 211, 238)";
         }
-        return "rgba(51,65,85,0.12)";
+        return "rgba(51,65,85,0.35)";
       }
       if (focusNodeId) {
         if (isEdgeBetweenCenterAndNeighbor(s, t, focusNodeId, focusNbr)) {
-          return "rgba(56,189,248,1)";
+          return "rgb(34, 211, 238)";
         }
-        return "rgba(51,65,85,0.12)";
+        return "rgba(51,65,85,0.35)";
       }
       return "rgba(148,163,184,0.45)";
     },
@@ -183,8 +191,8 @@ export const KnowledgeGraph = forwardRef<KnowledgeGraphRef, Props>(function Know
     (l: object) => {
       const link = l as GraphLink;
       const base = 0.35 + 0.9 * (link.strength || 0);
-      const s = String(link.source);
-      const t = String(link.target);
+      const s = linkEndpointId((link as { source: unknown }).source);
+      const t = linkEndpointId((link as { target: unknown }).target);
       if (searchMatchIds.size > 0) {
         return base;
       }
